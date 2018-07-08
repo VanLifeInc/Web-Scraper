@@ -14,7 +14,6 @@ class WebInterface:
 
         options=webdriver.ChromeOptions()
         options.add_argument('--ignore-certificate-errors')
-
         options.add_experimental_option("useAutomationExtension",False)
         options.add_argument("--test-type")
         options.binary_location="C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
@@ -32,9 +31,14 @@ class WebInterface:
         if submit==True:
             input_element.submit()
 
-    def click(self,x_path):
+    def xpath_click(self,x_path):
 
         input_element=self.driver.find_element_by_xpath(x_path)
+        input_element.click()
+
+    def text_click(self,text):
+        
+        input_element=self.driver.find_element_by_link_text(text)
         input_element.click()
 
     def load_insist(self,x_path,value):
@@ -61,10 +65,10 @@ if __name__ == "__main__":
     WI.go_to('https://www.kijiji.ca/')
 
     #Go to Toronto in Kijiji
-    WI.click('//*[@id="SearchLocationPicker"]')
-    WI.click('//*[@id="100009004"]/a')
-    WI.click('//*[@id="1700272"]/a')
-    WI.click('//*[@id="group-1700273"]/a')
+    WI.xpath_click('//*[@id="SearchLocationPicker"]')
+    WI.text_click('Ontario (M - Z)')
+    WI.text_click('Toronto (GTA)')
+    WI.text_click('City of Toronto')
 
     #Wait untill City of Toronto is loaded
     WI.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span[3]/h1','City of Toronto')
