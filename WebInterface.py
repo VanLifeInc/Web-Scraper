@@ -69,12 +69,19 @@ if __name__ == "__main__":
     WI.text_click('Ontario (M - Z)')
     WI.text_click('Toronto (GTA)')
     WI.text_click('City of Toronto')
-
+    
     #Wait untill City of Toronto is loaded
     WI.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span[3]/h1','City of Toronto')
+
+    #Go to buy/sell
+    WI.xpath_click('//*[@id="SearchCategory"]')
+    WI.text_click('Buy & Sell')
+
+    #Wait untill Buy & Sell in City of Toronto is loaded
+    WI.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span[4]/h1','Buy & Sell in City of Toronto')
 
     #Search for keyword
     WI.enter_text('//*[@id="SearchKeyword"]','Glenn',True)
 
     #Close/kill the driver
-    WI.driver.quit()
+    #WI.driver.quit()
