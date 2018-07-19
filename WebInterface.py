@@ -85,21 +85,18 @@ class WebInterface:
 
     def click_view_more_options(self):
 
-        #THIS IS BROKEN - MUST REVISIT!
-
-        PARTIAL_XPATH='//*[@id="mainPageContent"]/div[2]/div[1]/div[1]/div/ul[1]/ul/ul/'
+        CATEGORY_XPATH='//*[@id="mainPageContent"]/div[2]/div[1]/div[1]/div/ul[1]'
         VMO='View more options...'
 
-        print("Before I get in my bag...")
-        elements=self.driver.find_elements_by_link_text(VMO)
-        print(elements)
-        for i in elements:
-            xpath=i.get_attribute("xpath")
-            print(i,xpath)
-            if PARTIAL_XPATH in xpath:
-                i.click()
-                break
+        category_text=self.driver.find_element_by_xpath(CATEGORY_XPATH).get_attribute('textContent')
+
+        print("\tShould I click view more options?")
+        if VMO in category_text:
+            print("\tYes.")
+            element=self.driver.find_element_by_link_text(VMO)
+            element.click()
         else:
+            print("\tNo.")
             raise NoSuchElementException("\t'"+VMO+"' was not found")
 
     def next_category(self,branch):
@@ -150,7 +147,7 @@ class WebInterface:
                         next_category_xpath=branch[len(branch)-1][1]+'/ul/li['+str(next_category_index)+']/a'
                         next_category_name=self.driver.find_element_by_xpath(next_category_xpath).get_attribute('textContent').strip()
                         break
-                    except NoSuchElementException:
+                    except (NoSuchElementException, ElementNotVisibleException):
                         try:
                             print('\tTrying to click view more options...')
                             self.click_view_more_options()
