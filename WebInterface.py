@@ -61,8 +61,8 @@ class WebInterface:
         while(elementMatch==False):
             refresh=self.should_browser_refresh(start_time,20,refreshed)
             if refresh==True and refreshed==False:
-                start_time=time.time()
                 print("Load insist failed looking for '"+value+"' on '"+x_path+"'. Refreshing browser and trying again")
+                start_time=time.time()
                 self.driver.refresh()
                 refresh=False
                 refreshed=True
@@ -83,9 +83,9 @@ class WebInterface:
         else:
             return False
 
-    def next_category(self):
+    def click_view_more_options(self):
 
-        #THIS IS BROKEN - MUST REVISIT
+        #THIS IS BROKEN - MUST REVISIT!
 
         PARTIAL_XPATH='//*[@id="mainPageContent"]/div[2]/div[1]/div[1]/div/ul[1]/ul/ul/'
         VMO='View more options...'
