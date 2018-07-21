@@ -7,6 +7,7 @@ from selenium.common.exceptions import WebDriverException
 
 import numpy as np
 
+import configparser
 import time
 
 class WebInterface:
@@ -14,7 +15,15 @@ class WebInterface:
     def __init__(self):
 
         self.category_index=0
+        self.load_config()
 
+    def load_config(self):
+        
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        self.whitelist=config.get('WebInterface', 'Whitelist').split('//')
+        self.load_insist_limit=int(config.get('WebInterface', 'Load Insist Limit'))
+        
     def get_driver(self):
 
         options=webdriver.ChromeOptions()
@@ -40,13 +49,13 @@ class WebInterface:
 
     def xpath_click(self,x_path):
 
-        print("\tClicking on: " + str(x_path))
+        #print("\tClicking on: " + str(x_path))
         input_element=self.driver.find_element_by_xpath(x_path)
         input_element.click()
 
     def text_click(self,text):
 
-        print("\tClicking on: " + str(text))
+        #print("\tClicking on: " + str(text))
         input_element=self.driver.find_element_by_link_text(text)
         input_element.click()
 
@@ -57,9 +66,8 @@ class WebInterface:
         refreshed=False
         elementMatch=False
         start_time=time.time()
-        buffer=20
         while(elementMatch==False):
-            refresh=self.should_browser_refresh(start_time,20,refreshed)
+            refresh=self.should_browser_refresh(start_time,self.load_insist_limit,refreshed)
             if refresh==True and refreshed==False:
                 print("Load insist failed looking for '"+value+"' on '"+x_path+"'. Refreshing browser and trying again")
                 start_time=time.time()
@@ -90,14 +98,18 @@ class WebInterface:
 
         category_text=self.driver.find_element_by_xpath(CATEGORY_XPATH).get_attribute('textContent')
 
-        print("\tShould I click view more options?")
+        #print("\tShould I click view more options?")
         if VMO in category_text:
-            print("\tYes.")
+            #print("\tYes.")
             element=self.driver.find_element_by_link_text(VMO)
             element.click()
         else:
-            print("\tNo.")
+            #print("\tNo.")
             raise NoSuchElementException("\t'"+VMO+"' was not found")
+
+    def on_whitelist(self,branch):
+
+        return any(x in branch[:,0].tolist() for x in self.whitelist)
 
     def next_category(self,branch):
 
@@ -118,73 +130,64 @@ class WebInterface:
 
         if leaf==True:
 
-            #If we are on a leaf level - call subroutine to parse ads
-            print("\tStart looking through ads")
-            
-            '''
-            PUT THE SUB TO PARSE ADS RIGHT HERE
-            '''
-            
+            #Check if this leaf is on the white list
+            if self.on_whitelist(branch):
+                print("\tStart looking through ads")
+                '''
+                PUT THE SUB TO PARSE ADS RIGHT HERE
+                '''
+                print("\tContinue along the branch to find the next leaf...")
+            else:
+                print("\tElement not on whitelist. Start looking for next leaf...")
             self.go_to(branch[len(branch)-1][3])
-            print("\tContinue along the branch to find the next leaf...")
 
         else:
 
-            #If we are not on a leaf level - navigate to each sub-level one by one
+            #We are not on a leaf level
+            #Iterate through category indexes until NoSuchElementException
             next_category_index=0
             while(True):
 
-                self.go_to(cat_url)
-                self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[len(branch)-1][2])+']/h1',str(branch[len(branch)-1][0])+' in City of Toronto',)
                 next_category_index=next_category_index+1
 
-                #Pull the next sub-tree category information from HTML elements
-                #Click view more options if the next element doesn't exist
-                #If above doesn't work raise IndexError to catch outside of recursion (end of this branch)
-                unknown_exception=False
+                #Keep retrying entering the category. Break if successful.
                 while(True):
+
+                    self.go_to(cat_url)
+                    self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[len(branch)-1][2])+']/h1',str(branch[len(branch)-1][0])+' in City of Toronto')
+                    
                     try:
+
                         next_category_xpath=branch[len(branch)-1][1]+'/ul/li['+str(next_category_index)+']/a'
                         next_category_name=self.driver.find_element_by_xpath(next_category_xpath).get_attribute('textContent').strip()
-                        break
-                    except (NoSuchElementException, ElementNotVisibleException):
-                        try:
-                            print('\tTrying to click view more options...')
-                            self.click_view_more_options()
-                            print('\tClicked view more options...')
-                        except NoSuchElementException:
-                            print("\tScraping process complete for this branch. Going up a level.")
-                            raise EndOfBranch(branch)
-                        except WebDriverException:
-                            unknown_exception=True
-                            break
-                        
-                if unknown_exception==True:
-                    print("\tUnknown web driver exception. Trying again...")
-                    next_category_index=next_category_index-1
-                    continue
-                            
-                #Throw error if the next element is Fewer Elements (reached the end of the local sub-tree category index)
-                if next_category_name=='Fewer Options':
-                    raise EndOfBranch(branch)
-                
-                try:
-                    #Navigate to the new sub-category
-                    print("\tNavigating to: ",next_category_name)
-                    self.xpath_click(next_category_xpath)
-                    cat_header_index='//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(int(branch[len(branch)-1][2])+1)+']/h1'
-                    self.load_insist(cat_header_index,next_category_name+' in City of Toronto')
 
-                    #Pass this sub-category recursively as the new main category level
-                    next_branch=np.append(branch,[[next_category_name,branch[len(branch)-1][1]+'/ul',int(branch[len(branch)-1][2])+1,cat_url]],axis=0)
-                    self.next_category(next_branch)
-                    
-                except TimeoutException:
-                    print("\tBrowser refresh failed. Trying to locate element from the beginning...")
-                    next_category_index=next_category_index-1
-                except EndOfBranch:
-                    #Catching index errors indicates that the recursion has finished for a branch at a lower level
-                    pass
+                        #Throw error if the next element is Fewer Elements (reached the end of the local sub-tree category index)
+                        if next_category_name=='Fewer Options':
+                            return
+                        
+                        #Navigate to the new sub-category
+                        print("\tNavigating to: ",next_category_name)
+                        self.xpath_click(next_category_xpath)
+                        cat_header_index='//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(int(branch[len(branch)-1][2])+1)+']/h1'
+                        self.load_insist(cat_header_index,next_category_name+' in City of Toronto')
+
+                        #Pass this sub-category recursively as the new main category level
+                        next_branch=np.append(branch,[[next_category_name,branch[len(branch)-1][1]+'/ul',int(branch[len(branch)-1][2])+1,cat_url]],axis=0)
+                        self.next_category(next_branch)
+
+                        break
+                        
+                    except ElementNotVisibleException:
+                        print('\tTrying to click view more options...')
+                        self.click_view_more_options()
+                    except TimeoutException:
+                        print("\tBrowser refresh failed. Trying to locate element from the beginning...")
+                    #except WebDriverException:
+                    #    print("\tUnknown web driver exception. Trying to locate element from the beginning...")
+                    #    self.driver.refresh()
+                    except NoSuchElementException:
+                        print("\tScraping process complete for this branch. Going up a level.")
+                        return
 
 class EndOfBranch(Exception):
     """Basic exception for reaching the end of a branch during recursion"""
