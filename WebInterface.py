@@ -28,9 +28,12 @@ class WebInterface:
 
         options=webdriver.ChromeOptions()
         options.add_argument('--ignore-certificate-errors')
+        #options.add_argument("--headless")
         options.add_experimental_option("useAutomationExtension",False)
         options.add_experimental_option("prefs", {"profile.default_content_settings.cookies": 2})
         options.add_argument("--test-type")
+        options.add_argument("--start-maximized")
+        options.add_argument("--no-first-run")
         options.binary_location="C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
 
         self.driver=webdriver.Chrome(chrome_options=options)
@@ -64,9 +67,9 @@ class WebInterface:
         #print("\tLooking for '"+value+"' on '"+x_path+"'.")
         refresh=False
         refreshed=False
-        elementMatch=False
+        element_match=False
         start_time=time.time()
-        while(elementMatch==False):
+        while(element_match==False):
             refresh=self.should_browser_refresh(start_time,self.load_insist_limit,refreshed)
             if refresh==True and refreshed==False:
                 print("Load insist failed looking for '"+value+"' on '"+x_path+"'. Refreshing browser and trying again")
@@ -77,7 +80,7 @@ class WebInterface:
             try:
                 target_element=self.driver.find_element_by_xpath(x_path)
                 if target_element.text==value:
-                    elementMatch=True
+                    element_match=True
             except NoSuchElementException:
                 pass
             time.sleep(0.1)
@@ -111,18 +114,49 @@ class WebInterface:
 
         return any(x in branch[:,0].tolist() for x in self.whitelist)
 
+    def get_ads(self,branch):
+
+        START_URL=self.driver.current_url
+        CATEGORY=branch[-1,0]
+
+        print(CATEGORY)
+
+        counter=0
+        found_one=False
+        while(True):
+
+            try:
+                counter+=1
+                time.sleep(1)
+                x_path='//*[@id="mainPageContent"]/div[2]/div[3]/div/div['+str(counter)+']/div/div[2]/div/div[2]/a'
+                self.xpath_click(x_path)
+                self.load_insist('//*[@id="ViewItemPage"]/div[3]/div/ul/li[6]/h1/a/span',CATEGORY+' in City of Toronto')
+                self.go_to(START_URL)
+                found_one=True
+
+            except NoSuchElementException as error:
+                if found_one==True:
+                    found_one=False
+                    counter=0
+                    self.text_click('Next')
+                    self.load_insist('//*[@id="ViewItemPage"]/div[3]/div/ul/li[6]/h1/a/span',CATEGORY+' in City of Toronto')
+
+            except Exception as error:
+                print(str(error))
+                raise Exception(str(error))
+
+        self.go_to(start_URL)
+
     def next_category(self,branch):
 
         print("Category:",np.flipud(branch[:,0]))
 
         #Store the local category url for later navigation
-        cat_url=self.driver.current_url
-        #Store location of parent header on this category level
-        parent_header_xpath='//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[len(branch)-1][2])+']/h1'
+        START_URL=self.driver.current_url
 
         #Determine if we are on a leaf level
         try:
-            dummy=self.driver.find_element_by_xpath(branch[len(branch)-1][1]+'/ul/li[1]/a')
+            dummy=self.driver.find_element_by_xpath(branch[-1][1]+'/ul/li[1]/a')
             leaf=False
         except NoSuchElementException:
             print("\tWe are in a leaf level")
@@ -133,13 +167,13 @@ class WebInterface:
             #Check if this leaf is on the white list
             if self.on_whitelist(branch):
                 print("\tStart looking through ads")
-                '''
-                PUT THE SUB TO PARSE ADS RIGHT HERE
-                '''
+
+                self.get_ads(branch)
+
                 print("\tContinue along the branch to find the next leaf...")
             else:
                 print("\tElement not on whitelist. Start looking for next leaf...")
-            self.go_to(branch[len(branch)-1][3])
+            self.go_to(branch[-1][3])
 
         else:
 
@@ -153,12 +187,12 @@ class WebInterface:
                 #Keep retrying entering the category. Break if successful.
                 while(True):
 
-                    self.go_to(cat_url)
-                    self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[len(branch)-1][2])+']/h1',str(branch[len(branch)-1][0])+' in City of Toronto')
+                    self.go_to(START_URL)
+                    self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[-1][2])+']/h1',str(branch[-1][0])+' in City of Toronto')
                     
                     try:
 
-                        next_category_xpath=branch[len(branch)-1][1]+'/ul/li['+str(next_category_index)+']/a'
+                        next_category_xpath=branch[-1][1]+'/ul/li['+str(next_category_index)+']/a'
                         next_category_name=self.driver.find_element_by_xpath(next_category_xpath).get_attribute('textContent').strip()
 
                         #Throw error if the next element is Fewer Elements (reached the end of the local sub-tree category index)
@@ -168,11 +202,11 @@ class WebInterface:
                         #Navigate to the new sub-category
                         print("\tNavigating to: ",next_category_name)
                         self.xpath_click(next_category_xpath)
-                        cat_header_index='//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(int(branch[len(branch)-1][2])+1)+']/h1'
+                        cat_header_index='//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(int(branch[-1][2])+1)+']/h1'
                         self.load_insist(cat_header_index,next_category_name+' in City of Toronto')
 
                         #Pass this sub-category recursively as the new main category level
-                        next_branch=np.append(branch,[[next_category_name,branch[len(branch)-1][1]+'/ul',int(branch[len(branch)-1][2])+1,cat_url]],axis=0)
+                        next_branch=np.append(branch,[[next_category_name,branch[-1][1]+'/ul',int(branch[-1][2])+1,START_URL]],axis=0)
                         self.next_category(next_branch)
 
                         break
@@ -206,9 +240,6 @@ if __name__ == "__main__":
 
     #Instantiate the web driver
     WI.get_driver()
-
-    #Maximize chrome window
-    WI.driver.maximize_window()
 
     print("Navigating to the first category...")
 
