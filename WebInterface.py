@@ -52,19 +52,16 @@ class WebInterface:
 
     def xpath_click(self,x_path):
 
-        #print("\tClicking on: " + str(x_path))
         input_element=self.driver.find_element_by_xpath(x_path)
         input_element.click()
 
     def text_click(self,text):
 
-        #print("\tClicking on: " + str(text))
         input_element=self.driver.find_element_by_link_text(text)
         input_element.click()
 
-    def load_insist(self,x_path,value):
+    def load_insist(self,x_path,value=''):
 
-        #print("\tLooking for '"+value+"' on '"+x_path+"'.")
         refresh=False
         refreshed=False
         element_match=False
@@ -72,21 +69,21 @@ class WebInterface:
         while(element_match==False):
             refresh=self.should_browser_refresh(start_time,self.load_insist_limit,refreshed)
             if refresh==True and refreshed==False:
-                print("Load insist failed looking for '"+value+"' on '"+x_path+"'. Refreshing browser and trying again")
+                self.print_branch(branch,"Load insist failed looking for '"+value+"' on '"+x_path+"'. Refreshing browser and trying again")
                 start_time=time.time()
                 self.driver.refresh()
                 refresh=False
                 refreshed=True
             try:
                 target_element=self.driver.find_element_by_xpath(x_path)
-                if target_element.text==value:
+                if value in target_element.text:
                     element_match=True
             except NoSuchElementException:
                 pass
             time.sleep(0.1)
 
     def should_browser_refresh(self,start,limit,refreshed):
-        #print('\t','\t',str(time.time()-start))
+
         if time.time()-start>limit:
             if refreshed==True:
                 raise TimeoutException("Timeout Occured")
@@ -101,28 +98,26 @@ class WebInterface:
 
         category_text=self.driver.find_element_by_xpath(CATEGORY_XPATH).get_attribute('textContent')
 
-        #print("\tShould I click view more options?")
         if VMO in category_text:
-            #print("\tYes.")
             element=self.driver.find_element_by_link_text(VMO)
             element.click()
         else:
-            #print("\tNo.")
             raise NoSuchElementException("\t'"+VMO+"' was not found")
 
     def on_whitelist(self,branch):
 
         return any(x in branch[:,0].tolist() for x in self.whitelist)
 
+    def print_branch(self,branch,message):
+        print('\t'*len(branch)+message)
+
     def get_ads(self,branch):
 
         START_URL=self.driver.current_url
-        CATEGORY=branch[-1,0]
-
-        print(CATEGORY)
+        LAST_URL=START_URL
 
         counter=0
-        found_one=False
+        div_buffer=0
         while(True):
 
             try:
@@ -130,26 +125,32 @@ class WebInterface:
                 time.sleep(1)
                 x_path='//*[@id="mainPageContent"]/div[2]/div[3]/div/div['+str(counter)+']/div/div[2]/div/div[2]/a'
                 self.xpath_click(x_path)
-                self.load_insist('//*[@id="ViewItemPage"]/div[3]/div/ul/li[6]/h1/a/span',CATEGORY+' in City of Toronto')
-                self.go_to(START_URL)
-                found_one=True
+                self.load_insist('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1')
+                title=self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1').get_attribute('textContent')
+                self.print_branch(branch,str(counter)+" Ad: "+title)
+                self.go_to(LAST_URL)
+                div_buffer=0
 
             except NoSuchElementException as error:
-                if found_one==True:
-                    found_one=False
+                div_buffer+=1
+                if div_buffer>10:
+                    div_buffer=0
                     counter=0
-                    self.text_click('Next')
-                    self.load_insist('//*[@id="ViewItemPage"]/div[3]/div/ul/li[6]/h1/a/span',CATEGORY+' in City of Toronto')
+                    self.print_branch(branch,"Trying to click next...")
+                    self.text_click('Next >')
+                    self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]')
+                    self.print_branch(branch,"I clicked next...")
+                    LAST_URL=self.driver.current_url
 
             except Exception as error:
-                print(str(error))
+                self.print_branch(branch,str(error))
                 raise Exception(str(error))
 
-        self.go_to(start_URL)
+        self.go_to(START_URL)
 
     def next_category(self,branch):
 
-        print("Category:",np.flipud(branch[:,0]))
+        self.print_branch(branch,"Category: "+str(np.flipud(branch[:,0])))
 
         #Store the local category url for later navigation
         START_URL=self.driver.current_url
@@ -159,20 +160,20 @@ class WebInterface:
             dummy=self.driver.find_element_by_xpath(branch[-1][1]+'/ul/li[1]/a')
             leaf=False
         except NoSuchElementException:
-            print("\tWe are in a leaf level")
+            self.print_branch(branch,"We are in a leaf level")
             leaf=True
 
         if leaf==True:
 
             #Check if this leaf is on the white list
             if self.on_whitelist(branch):
-                print("\tStart looking through ads")
+                self.print_branch(branch,"Start looking through ads")
 
                 self.get_ads(branch)
 
-                print("\tContinue along the branch to find the next leaf...")
+                self.print_branch(branch,"Continue along the branch to find the next leaf...")
             else:
-                print("\tElement not on whitelist. Start looking for next leaf...")
+                self.print_branch(branch,"Element not on whitelist. Start looking for next leaf...")
             self.go_to(branch[-1][3])
 
         else:
@@ -188,7 +189,7 @@ class WebInterface:
                 while(True):
 
                     self.go_to(START_URL)
-                    self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[-1][2])+']/h1',str(branch[-1][0])+' in City of Toronto')
+                    self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(branch[-1][2])+']/h1',str(branch[-1][0]))
                     
                     try:
 
@@ -200,10 +201,10 @@ class WebInterface:
                             return
                         
                         #Navigate to the new sub-category
-                        print("\tNavigating to: ",next_category_name)
+                        self.print_branch(branch,"Navigating to: "+next_category_name)
                         self.xpath_click(next_category_xpath)
                         cat_header_index='//*[@id="mainPageContent"]/div[1]/div[1]/span['+str(int(branch[-1][2])+1)+']/h1'
-                        self.load_insist(cat_header_index,next_category_name+' in City of Toronto')
+                        self.load_insist(cat_header_index,next_category_name)
 
                         #Pass this sub-category recursively as the new main category level
                         next_branch=np.append(branch,[[next_category_name,branch[-1][1]+'/ul',int(branch[-1][2])+1,START_URL]],axis=0)
@@ -212,15 +213,15 @@ class WebInterface:
                         break
                         
                     except ElementNotVisibleException:
-                        print('\tTrying to click view more options...')
+                        self.print_branch(branch,'Trying to click view more options...')
                         self.click_view_more_options()
                     except TimeoutException:
-                        print("\tBrowser refresh failed. Trying to locate element from the beginning...")
+                        self.print_branch(branch,"Browser refresh failed. Trying to locate element from the beginning...")
                     #except WebDriverException:
-                    #    print("\tUnknown web driver exception. Trying to locate element from the beginning...")
+                    #    self.print_branch(branch,"\tUnknown web driver exception. Trying to locate element from the beginning...")
                     #    self.driver.refresh()
                     except NoSuchElementException:
-                        print("\tScraping process complete for this branch. Going up a level.")
+                        self.print_branch(branch,"Scraping process complete for this branch. Going up a level.")
                         return
 
 class EndOfBranch(Exception):
