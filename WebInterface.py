@@ -6,7 +6,6 @@ from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import WebDriverException
 
 import numpy as np
-
 import configparser
 import time
 
