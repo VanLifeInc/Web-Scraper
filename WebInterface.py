@@ -35,7 +35,7 @@ class WebInterface:
 
         self.driver = webdriver.Chrome(chrome_options=options)
 
-    def go_to(self,link):
+    def go_to(self, link):
 
         if link != self.driver.current_url:
             self.driver.get(link)
