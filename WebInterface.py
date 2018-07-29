@@ -108,6 +108,23 @@ class WebInterface:
     def print_branch(self, branch, message):
         print('\t'*len(branch)+message)
 
+    def save_ad(self,branch):
+
+        ad_id=self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[3]/div/ul/li['+str(int(branch[-1][2])+1)+']/span').get_attribute('textContent')
+        self.print_branch(branch,ad_id)
+        title=self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1').get_attribute('textContent')
+        self.print_branch(branch,title)
+        price=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Product']/"
+                                                "div[contains(@class,'itemTitleWrapper')]//"
+                                                "div[contains(@class,'mainColumn')]//"
+                                                "div[contains(@class,'priceContainer')]//"
+                                                "*[@itemprop='price']").get_attribute('content')
+        self.print_branch(branch,price)
+        loc=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Place']/span[@itemprop='address']").get_attribute('textContent')
+        self.print_branch(branch,loc)
+        desc=self.driver.find_element_by_xpath('//*[@id="vip-body"]/div[4]/div[1]/div/div/p').get_attribute('textContent')
+        self.print_branch(branch,desc)
+
     def get_ads(self, branch):
 
         START_URL = self.driver.current_url
@@ -124,7 +141,11 @@ class WebInterface:
                 self.xpath_click(x_path)
                 self.load_insist('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1')
                 title = self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1').get_attribute('textContent')
+
+                print("\n")
                 self.print_branch(branch, str(counter)+" Ad: "+title)
+                self.save_ad(branch)
+
                 self.go_to(LAST_URL)
                 div_buffer = 0
 
