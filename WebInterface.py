@@ -8,7 +8,11 @@ from selenium.common.exceptions import WebDriverException
 import numpy as np
 import configparser
 import time
+import os
+import urllib.request
+import datetime
 
+import psycopg2 as pg2
 
 class WebInterface:
 
@@ -19,6 +23,11 @@ class WebInterface:
         config.read('config.ini')
         self.whitelist = config.get('WebInterface', 'Whitelist').split('//')
         self.load_insist_limit = int(config.get('WebInterface', 'Load Insist Limit'))
+        self.image_location = config.get('WebInterface', 'Image Location')
+
+        self.user= config.get('Database', 'User')
+        self.password = config.get('Database', 'Password')
+        self.database = config.get('Database', 'Database')
         
     def get_driver(self):
 
@@ -108,22 +117,77 @@ class WebInterface:
     def print_branch(self, branch, message):
         print('\t'*len(branch)+message)
 
+    def save_image(self,id,branch_str):
+
+        src = self.driver.find_element_by_xpath('//*[@id="mainHeroImage"]/img').get_attribute('src')
+        if not os.path.exists(self.image_location + "//" + branch_str):
+            os.makedirs(self.image_location + "//" + branch_str)
+        image_loc=self.image_location + "//" + branch_str + "//" + id + ".png"
+        if not os.path.exists(image_loc):
+            urllib.request.urlretrieve(src, image_loc)
+
+        return image_loc
+
     def save_ad(self,branch):
 
-        ad_id=self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[3]/div/ul/li['+str(int(branch[-1][2])+1)+']/span').get_attribute('textContent')
-        self.print_branch(branch,ad_id)
-        title=self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1').get_attribute('textContent')
-        self.print_branch(branch,title)
+        ad_id=self.driver.find_element_by_xpath("//ul[contains(@class,'crumbList')]"
+                            "//*[contains(@class,'currentCrumb')]/span").get_attribute('textContent')
+        title=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Product']"
+                            "//div[contains(@class,'itemTitleWrapper')]"
+                            "//div[contains(@class,'mainColumn')]"
+                            "//h1[@itemprop='name']").get_attribute('textContent')
         price=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Product']/"
                                                 "div[contains(@class,'itemTitleWrapper')]//"
                                                 "div[contains(@class,'mainColumn')]//"
-                                                "div[contains(@class,'priceContainer')]//"
-                                                "*[@itemprop='price']").get_attribute('content')
-        self.print_branch(branch,price)
-        loc=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Place']/span[@itemprop='address']").get_attribute('textContent')
-        self.print_branch(branch,loc)
-        desc=self.driver.find_element_by_xpath('//*[@id="vip-body"]/div[4]/div[1]/div/div/p').get_attribute('textContent')
-        self.print_branch(branch,desc)
+                                                "div[contains(@class,'priceContainer')]").get_attribute('textContent')
+        try:
+            loc=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Place']"
+                                "//*[contains(@itemprop,'address')]").get_attribute('textContent')
+        except NoSuchElementException:
+            loc=''
+        desc=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Product']"
+                            "//div[contains(@class,'itemInfo')]"
+                            "//div[contains(@class,'showMoreWrapper')]"
+                            "//div[contains(@class,'showMoreChild')]"
+                            "//div[contains(@class,'descriptionContainer')]"
+                            "//div[@itemprop='description']").get_attribute('textContent')
+        try:
+            date_posted=self.driver.find_element_by_xpath("//div[@itemtype='http://schema.org/Product']"
+                                     "/div[contains(@class,'itemTitleWrapper')]"
+                                    "//div[contains(@class,'sidebarColumn')]"
+                                    "//div[contains(@class,'itemMeta')]"
+                                    "//div[@itemprop='datePosted']").get_attribute('content')
+        except NoSuchElementException:
+            # Sometimes they don't expose the posting date...
+            date_posted=None
+        branch_str = '//'.join(branch[:, 0].astype(str).tolist())
+
+        self.print_branch(branch, "Saving Ad image locally...")
+        image_loc = self.save_image(ad_id,branch_str)
+
+        self.print_branch(branch,"Saving Ad to SQL...")
+        self.save_ad_to_sql(title, price, loc, desc, ad_id, image_loc, self.driver.current_url, branch_str, date_posted)
+
+    def save_ad_to_sql(self, title, price, location, description, ad_id, image_loc, url, branch_str, date_posted=None):
+
+        conn = pg2.connect(database=self.database, user=self.user, password=self.password)
+        cur = conn.cursor()
+        dt = str(datetime.datetime.now())
+        sql = "INSERT INTO kijiji_ads (title, price, location, description, " \
+            "ad_id, image_loc, url, date_posted, branch, last_updated) " \
+            "VALUES " \
+            "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) " \
+            "ON CONFLICT (ad_id) " \
+            "DO UPDATE " \
+            "SET title = EXCLUDED.title, " \
+            "price = EXCLUDED.price, " \
+            "description = EXCLUDED.description, " \
+            "last_updated = EXCLUDED.last_updated;"
+        data = (title, price, location, description, ad_id, image_loc, url, date_posted, branch_str, dt)
+        cur.execute(sql, data)
+        conn.commit()
+        cur.close()
+        conn.close()
 
     def get_ads(self, branch):
 
@@ -142,13 +206,6 @@ class WebInterface:
                 self.load_insist('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1')
                 title = self.driver.find_element_by_xpath('//*[@id="ViewItemPage"]/div[5]/div[1]/div[1]/div/h1').get_attribute('textContent')
 
-                print("\n")
-                self.print_branch(branch, str(counter)+" Ad: "+title)
-                self.save_ad(branch)
-
-                self.go_to(LAST_URL)
-                div_buffer = 0
-
             except NoSuchElementException as error:
                 div_buffer += 1
                 if div_buffer > 10:
@@ -159,10 +216,22 @@ class WebInterface:
                     self.load_insist('//*[@id="mainPageContent"]/div[1]/div[1]')
                     self.print_branch(branch, "I clicked next...")
                     LAST_URL = self.driver.current_url
+                continue
 
             except Exception as error:
                 self.print_branch(branch,str(error))
                 raise Exception(str(error))
+
+            print("\n")
+            self.print_branch(branch, str(counter)+" Ad: "+title)
+
+            try:
+                self.save_ad(branch)
+            except Exception as error:
+                raise AdError(str(error))
+
+            self.go_to(LAST_URL)
+            div_buffer = 0
 
         self.go_to(START_URL)
 
@@ -254,6 +323,13 @@ class EndOfBranch(Exception):
         super(EndOfBranch, self).__init__(msg)
         self.branch = branch
 
+class AdError(Exception):
+    """Basic exception for an error occuring on the ad level"""
+    def __init__(self, branch, msg=None):
+        if msg is None:
+            msg = "Error extracting ad at: " + str(branch)
+        super(EndOfBranch, self).__init__(msg)
+        self.branch = branch
 
 if __name__ == "__main__":
 
